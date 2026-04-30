@@ -1,6 +1,6 @@
 """
 Auto-suggest tags for a deck based on its card types and keywords.
-Usage: python scripts/tag.py <deck-slug>
+Usage: python3 scripts/tag.py <deck-slug>
 """
 
 import sys
@@ -29,7 +29,7 @@ def suggest_tags(cards: list[dict]) -> list[str]:
 
 def main():
     if len(sys.argv) < 2:
-        print("Usage: python scripts/tag.py <deck-slug>")
+        print("Usage: python3 scripts/tag.py <deck-slug>")
         sys.exit(1)
 
     slug = sys.argv[1]

@@ -7,13 +7,13 @@ key card interactions, win conditions, and mulligan approach. When you're
 done answering, it writes a polished primer.md to your deck directory.
 
 Usage:
-    python scripts/build_primer.py <deck-slug>
+    python3 scripts/build_primer.py <deck-slug>
 
     # List available decks
-    python scripts/build_primer.py --list
+    python3 scripts/build_primer.py --list
 
     # Resume a session (re-reads existing primer.md as context)
-    python scripts/build_primer.py <deck-slug> --resume
+    python3 scripts/build_primer.py <deck-slug> --resume
 
 Environment:
     GEMINI_API_KEY   required — get one free at https://aistudio.google.com/
@@ -89,7 +89,7 @@ def load_deck(slug: str) -> tuple[dict, list[dict]]:
     cards_path = deck_dir / "cards.json"
 
     if not deck_dir.exists():
-        sys.exit(f"Deck not found: {deck_dir}\nRun: python scripts/import_archidekt.py first.")
+        sys.exit(f"Deck not found: {deck_dir}\nRun: python3 scripts/import_archidekt.py first.")
 
     meta: dict = {}
     if meta_path.exists():
@@ -380,7 +380,7 @@ def main() -> None:
             if d.is_dir() and not d.name.startswith("_")
         )
         if not slugs:
-            print("No decks imported yet. Run: python scripts/import_archidekt.py")
+            print("No decks imported yet. Run: python3 scripts/import_archidekt.py")
         else:
             print("Available decks:")
             for s in slugs:

@@ -1,6 +1,6 @@
 """
 Print deck concepts not yet built, for use when prompting an AI for next-build advice.
-Usage: python scripts/recommend.py
+Usage: python3 scripts/recommend.py
 
 Outputs a summary of unbuilt decks you can paste into a Claude/ChatGPT prompt.
 """

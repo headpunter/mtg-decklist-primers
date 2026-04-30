@@ -10,16 +10,16 @@ Each deck gets:
 
 Usage:
     # Import default folders (1550171 page 1, 1550171 page 2, 1583741)
-    python scripts/import_archidekt.py
+    python3 scripts/import_archidekt.py
 
     # Override which folders to scan
-    python scripts/import_archidekt.py --folders 1550171 1583741
+    python3 scripts/import_archidekt.py --folders 1550171 1583741
 
     # Import specific deck IDs directly (skips folder lookup)
-    python scripts/import_archidekt.py --decks 123456 789012
+    python3 scripts/import_archidekt.py --decks 123456 789012
 
     # Re-import decks that already exist
-    python scripts/import_archidekt.py --force
+    python3 scripts/import_archidekt.py --force
 
 Environment:
     ARCHIDEKT_TOKEN   (optional) Bearer token for private folders/decks
@@ -199,9 +199,9 @@ def get_folder_decks(folder_id: int, sess: requests.Session) -> list[dict]:
             f"  open DevTools → Network → any /api/ request → copy the\n"
             f"  'Authorization: Bearer ...' header value, then:\n"
             f"\n      export ARCHIDEKT_TOKEN='Bearer xxxxx'\n"
-            f"      python scripts/import_archidekt.py\n"
+            f"      python3 scripts/import_archidekt.py\n"
             f"\n  Or pass deck URLs/IDs directly:\n"
-            f"      python scripts/import_archidekt.py --decks "
+            f"      python3 scripts/import_archidekt.py --decks "
             f"https://archidekt.com/decks/123456\n"
         )
     return stubs
@@ -442,7 +442,7 @@ PRIMER_STUB = """\
 
 > *This primer is a stub. Run the following to generate it interactively:*
 > ```
-> python scripts/build_primer.py {slug}
+> python3 scripts/build_primer.py {slug}
 > ```
 """
 

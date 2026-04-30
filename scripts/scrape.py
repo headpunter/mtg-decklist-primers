@@ -1,6 +1,6 @@
 """
 Fetch card data from Scryfall for a given deck slug.
-Usage: python scripts/scrape.py <deck-slug>
+Usage: python3 scripts/scrape.py <deck-slug>
 """
 
 import sys
@@ -36,7 +36,7 @@ def parse_decklist(decklist_path: Path) -> list[str]:
 
 def main():
     if len(sys.argv) < 2:
-        print("Usage: python scripts/scrape.py <deck-slug>")
+        print("Usage: python3 scripts/scrape.py <deck-slug>")
         sys.exit(1)
 
     slug = sys.argv[1]

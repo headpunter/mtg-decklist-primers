@@ -8,15 +8,15 @@ A living repository of Commander decklists, primers, and build status.
 pip install -r requirements.txt
 
 # 1. Import all decks from your Archidekt folders
-python scripts/import_archidekt.py
+python3 scripts/import_archidekt.py
 
 # 2. Build a primer for a deck interactively (Gemini Q&A)
 export GEMINI_API_KEY=your-key-here
-python scripts/build_primer.py --list          # see what's available
-python scripts/build_primer.py <deck-slug>     # start a session
+python3 scripts/build_primer.py --list          # see what's available
+python3 scripts/build_primer.py <deck-slug>     # start a session
 
 # 3. See what you haven't built yet
-python scripts/recommend.py
+python3 scripts/recommend.py
 ```
 
 ---
@@ -44,16 +44,16 @@ owned.yaml        tracks which decks are physically sleeved and built
 
 ```bash
 # Default: scans folders 1550171 and 1583741
-python scripts/import_archidekt.py
+python3 scripts/import_archidekt.py
 
 # Override folders
-python scripts/import_archidekt.py --folders 1550171 1583741
+python3 scripts/import_archidekt.py --folders 1550171 1583741
 
 # Import specific deck IDs directly
-python scripts/import_archidekt.py --decks 123456 789012
+python3 scripts/import_archidekt.py --decks 123456 789012
 
 # Re-import everything (overwrites existing files)
-python scripts/import_archidekt.py --force
+python3 scripts/import_archidekt.py --force
 ```
 
 ### Private folders
@@ -66,7 +66,7 @@ If your folders are private, grab your bearer token from browser DevTools:
 
 ```bash
 export ARCHIDEKT_TOKEN=your-token-here
-python scripts/import_archidekt.py
+python3 scripts/import_archidekt.py
 ```
 
 Each imported deck gets a `decklist.md` with a full card table:
@@ -85,7 +85,7 @@ Gemini asks you questions about your deck and writes `primer.md` when done.
 ```bash
 export GEMINI_API_KEY=your-key-here   # free key at aistudio.google.com
 
-python scripts/build_primer.py <deck-slug>
+python3 scripts/build_primer.py <deck-slug>
 ```
 
 **Session commands:**
@@ -101,7 +101,7 @@ python scripts/build_primer.py <deck-slug>
 
 To update an existing primer:
 ```bash
-python scripts/build_primer.py <deck-slug> --resume
+python3 scripts/build_primer.py <deck-slug> --resume
 ```
 
 ---
@@ -135,6 +135,6 @@ status: built   # concept | paper | built
 ## Next Build Recommendations
 
 ```bash
-python scripts/recommend.py
+python3 scripts/recommend.py
 # Paste the output into Claude/Gemini with your budget and preferences
 ```
