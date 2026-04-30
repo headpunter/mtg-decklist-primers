@@ -236,6 +236,14 @@ def get_folder_decks(folder_id: int, sess: requests.Session) -> list[dict]:
     return stubs
 
 
+def _get_updated_at(data: dict) -> str | None:
+    """Return the deck's last-modified timestamp from whichever field Archidekt uses."""
+    for field in ("updatedAt", "updated_at", "modifiedAt", "lastModified"):
+        if val := data.get(field):
+            return str(val)
+    return None
+
+
 def get_deck_full(deck_id: int, sess: requests.Session) -> dict:
     """Fetch a full deck (with cards) from Archidekt."""
     url = f"{ARCHIDEKT_API}/decks/{deck_id}/"
@@ -367,6 +375,18 @@ CATEGORY_ORDER = [
     "Other",
 ]
 
+# Within a category, sort cards by primary card type in this order
+TYPE_ORDER = [
+    "Creature",
+    "Planeswalker",
+    "Battle",
+    "Artifact",
+    "Enchantment",
+    "Instant",
+    "Sorcery",
+    "Land",
+]
+
 
 def _sort_key(cat: str) -> tuple[int, str]:
     try:
@@ -406,7 +426,14 @@ def build_decklist_md(deck_name: str, enriched: list[dict]) -> str:
     lines.append('<tbody>')
 
     for cat in sorted(by_cat.keys(), key=_sort_key):
-        cat_cards = sorted(by_cat[cat], key=lambda c: c["name"])
+        def _card_sort_key(card: dict) -> tuple[int, str]:
+            tl = card.get("type_line", "")
+            for i, t in enumerate(TYPE_ORDER):
+                if t in tl:
+                    return (i, card["name"])
+            return (len(TYPE_ORDER), card["name"])
+
+        cat_cards = sorted(by_cat[cat], key=_card_sort_key)
         lines.append(
             f'<tr><td colspan="4" align="center"><strong>{cat}</strong></td></tr>'
         )
@@ -474,6 +501,7 @@ def build_meta_yaml(deck: dict, enriched: list[dict]) -> dict:
         "power_level": None,
         "format": "EDH",
         "status": "concept",
+        "archidekt_updated_at": _get_updated_at(deck) or "",
         "links": {
             "archidekt": f"https://archidekt.com/decks/{deck_id}",
             "moxfield": "",
@@ -509,8 +537,20 @@ def process_deck(
     print(f"\n── {deck_name}  (id={deck_id})  →  {slug}")
 
     if not force and (deck_dir / "cards.json").exists():
-        print("   skipping — already imported (use --force to re-import)")
-        return
+        # Skip if Archidekt says the deck hasn't changed since last import
+        stub_updated = _get_updated_at(deck_stub)
+        meta_path_check = deck_dir / "meta.yaml"
+        if stub_updated and meta_path_check.exists():
+            try:
+                stored = yaml.safe_load(meta_path_check.read_text()) or {}
+                if stored.get("archidekt_updated_at") == stub_updated:
+                    print(f"   unchanged — skipping")
+                    return
+            except Exception:
+                pass
+        elif not stub_updated:
+            print("   already imported — skipping (use --force to re-import)")
+            return
 
     # 1. Fetch full deck from Archidekt
     print("   fetching deck from Archidekt …")
@@ -576,10 +616,12 @@ def process_deck(
     print(f"   wrote {meta_path.name}")
 
     primer_path = deck_dir / "primer.md"
-    if not primer_path.exists() or force:
-        primer_path.write_text(
-            PRIMER_STUB.format(name=deck_name, slug=slug)
-        )
+    primer_is_stub = (
+        not primer_path.exists()
+        or "This primer is a stub" in primer_path.read_text(encoding="utf-8")
+    )
+    if primer_is_stub:
+        primer_path.write_text(PRIMER_STUB.format(name=deck_name, slug=slug))
         print(f"   wrote {primer_path.name} (stub)")
 
     print(f"   ✓  done")
