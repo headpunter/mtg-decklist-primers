@@ -259,7 +259,8 @@ def fetch_scryfall_batch(names: list[str], sf_sess: requests.Session) -> dict[st
 
     for i in range(0, len(names), 75):
         batch = names[i : i + 75]
-        payload = {"identifiers": [{"name": n} for n in batch]}
+        # Scryfall matches on front-face name only; strip " // Back" if present
+        payload = {"identifiers": [{"name": n.split(" // ")[0].strip()} for n in batch]}
         resp = sf_sess.post(f"{SCRYFALL_API}/cards/collection", json=payload, timeout=20)
         resp.raise_for_status()
         data = resp.json()
