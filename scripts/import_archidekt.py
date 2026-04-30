@@ -659,26 +659,60 @@ def process_deck(
     print(f"   ✓  done")
 
 
+def _probe_user_endpoint(username: str, sess: requests.Session) -> tuple[str, dict] | tuple[None, None]:
+    """Try known Archidekt API patterns for listing a user's decks."""
+    candidates = [
+        (f"{ARCHIDEKT_API}/decks/",              {"owner__username": username, "pageSize": 50}),
+        (f"{ARCHIDEKT_API}/decks/",              {"owner__username": username}),
+        (f"{ARCHIDEKT_API}/decks/",              {"username": username, "pageSize": 50}),
+        (f"{ARCHIDEKT_API}/users/{username}/decks/", {}),
+        (f"https://archidekt.com/api/decks/",    {"owner__username": username, "pageSize": 48}),
+    ]
+    for url, params in candidates:
+        try:
+            r = sess.get(url, params=params, timeout=10)
+            if r.status_code == 200:
+                data = r.json()
+                # Make sure we actually got deck data, not an empty/wrong response
+                results = data.get("results") or (data if isinstance(data, list) else [])
+                print(f"  ✓  user endpoint: {url}  params={list(params.keys())}")
+                return url, params
+        except Exception:
+            pass
+    return None, None
+
+
 def get_user_decks(username: str, sess: requests.Session) -> list[dict]:
     """Fetch all public decks for an Archidekt username."""
+    base, init_params = _probe_user_endpoint(username, sess)
+    if base is None:
+        print(
+            f"  Could not find a working API endpoint for user '{username}'.\n"
+            f"  Try passing deck URLs directly:\n"
+            f"    python3 scripts/import_archidekt.py --decks https://archidekt.com/decks/ID1 ...\n"
+        )
+        return []
+
     decks = []
-    next_url: str | None = f"{ARCHIDEKT_API}/decks/"
-    init_params = {"owner__username": username, "pageSize": 50}
+    next_url: str | None = base
     page = 1
     while next_url:
         try:
             resp = sess.get(next_url, params=init_params if page == 1 else None, timeout=15)
             resp.raise_for_status()
         except requests.HTTPError as e:
-            print(f"  HTTP {e.response.status_code} fetching page {page}: {e}")
+            print(f"  HTTP {e.response.status_code} on page {page}: {e}")
             break
         data = resp.json()
-        results = data.get("results", []) if isinstance(data, dict) else data
+        if isinstance(data, list):
+            results, next_url = data, None
+        else:
+            results = data.get("results", [])
+            next_url = data.get("next")
+            if not isinstance(next_url, str) or not next_url:
+                next_url = None
         decks.extend(results)
         print(f"    page {page}: {len(results)} decks  (total so far: {len(decks)})")
-        next_url = data.get("next") if isinstance(data, dict) else None
-        if not isinstance(next_url, str) or not next_url:
-            next_url = None
         page += 1
         if next_url:
             time.sleep(0.3)
