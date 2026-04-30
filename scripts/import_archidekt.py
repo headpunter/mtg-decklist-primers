@@ -196,8 +196,11 @@ def get_folder_decks(folder_id: int, sess: requests.Session) -> list[dict]:
             if isinstance(data, list):
                 results, has_next = data, False
             elif "results" in data:
-                results, has_next = data["results"], bool(data.get("next"))
+                results = data["results"]
+                # Only continue paginating if "next" is a non-null URL
+                has_next = isinstance(data.get("next"), str) and bool(data["next"])
             elif "decks" in data:
+                # Folder object — all decks returned at once, no pagination
                 results, has_next = data["decks"], False
             else:
                 # Unknown structure — grab the first list value we find
@@ -251,7 +254,9 @@ def get_deck_full(deck_id: int, sess: requests.Session) -> dict:
 def fetch_scryfall_batch(names: list[str], sf_sess: requests.Session) -> dict[str, dict]:
     """
     Batch-fetch card data from Scryfall using the /cards/collection endpoint.
-    Returns a dict keyed by exact card name (as returned by Scryfall).
+    Returns a dict keyed by card name. DFCs are indexed under BOTH the full
+    combined name ("Front // Back") and the front-face name alone ("Front"),
+    since Archidekt only stores the front-face name.
     """
     results: dict[str, dict] = {}
 
@@ -263,7 +268,17 @@ def fetch_scryfall_batch(names: list[str], sf_sess: requests.Session) -> dict[st
         data = resp.json()
 
         for card in data.get("data", []):
-            results[card["name"]] = card
+            full_name = card["name"]
+            results[full_name] = card
+            # For DFCs ("Front // Back"), also index by front face alone
+            if " // " in full_name:
+                front = full_name.split(" // ")[0].strip()
+                results.setdefault(front, card)
+            # Also index by each card_face name individually
+            for face in card.get("card_faces", []):
+                face_name = face.get("name", "")
+                if face_name:
+                    results.setdefault(face_name, card)
 
         for nf in data.get("not_found", []):
             print(f"    WARN Scryfall: not found → {nf.get('name', nf)}")
@@ -274,12 +289,18 @@ def fetch_scryfall_batch(names: list[str], sf_sess: requests.Session) -> dict[st
 
 
 def card_image_url(card: dict, size: str = IMAGE_SIZE) -> str:
-    """Resolve image URL, handling double-faced cards."""
+    """Resolve image URL, handling DFCs and falling back to Scryfall ID URL."""
+    # Single-faced cards
     if "image_uris" in card:
         return card["image_uris"].get(size, "")
-    faces = card.get("card_faces", [])
-    if faces and "image_uris" in faces[0]:
-        return faces[0]["image_uris"].get(size, "")
+    # Transform / MDFC: image lives on each face
+    for face in card.get("card_faces", []):
+        if "image_uris" in face:
+            return face["image_uris"].get(size, "")
+    # Last resort: construct directly from Scryfall card ID
+    sf_id = card.get("id", "")
+    if sf_id:
+        return f"https://api.scryfall.com/cards/{sf_id}?format=image&version={size}"
     return ""
 
 
