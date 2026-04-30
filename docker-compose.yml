@@ -25,6 +25,6 @@ services:
       - DECKS_DIR=/app/decks
     command: >
       python3 scripts/import_archidekt.py
-      --username ${ARCHIDEKT_USERNAME}
+      --folders 1550171 1583741 1583742
     profiles:
       - tools
