@@ -25,6 +25,7 @@ Requires:
 import argparse
 import json
 import os
+import re
 import sys
 import textwrap
 from pathlib import Path
@@ -75,6 +76,46 @@ def wrap(text: str, width: int = 90, indent: str = "  ") -> str:
 
 def hr() -> None:
     print(c("─" * 70, DIM))
+
+
+NOTICE_MARKER = "<!-- deck-updated-notice -->"
+STUB_MARKER   = "This primer is a stub"
+
+
+def strip_update_notice(text: str) -> str:
+    """Remove the deck-updated-notice block from a primer, if present."""
+    return re.sub(
+        r"<!-- deck-updated-notice -->.*?\n\n",
+        "",
+        text,
+        count=1,
+        flags=re.DOTALL,
+    ).lstrip()
+
+
+def primer_status(slug: str) -> str:
+    """Return 'stub', 'needs-update', 'done', or 'missing'."""
+    primer_path = DECKS_DIR / slug / "primer.md"
+    if not primer_path.exists():
+        return "missing"
+    text = primer_path.read_text(encoding="utf-8")
+    if STUB_MARKER in text:
+        return "stub"
+    if NOTICE_MARKER in text:
+        return "needs-update"
+    return "done"
+
+
+def decks_needing_primers() -> list[tuple[str, str]]:
+    """Return [(slug, status), ...] for every deck that needs primer work."""
+    results = []
+    for d in sorted(DECKS_DIR.iterdir()):
+        if not d.is_dir() or d.name.startswith("_"):
+            continue
+        status = primer_status(d.name)
+        if status in ("missing", "stub", "needs-update"):
+            results.append((d.name, status))
+    return results
 
 
 # ---------------------------------------------------------------------------
@@ -224,12 +265,23 @@ def run_session(slug: str, resume: bool = False) -> None:
     )
 
     if resume and primer_path.exists():
-        existing = primer_path.read_text(encoding="utf-8")
+        existing = strip_update_notice(primer_path.read_text(encoding="utf-8"))
         initial_msg = (
             f"Here is the deck I want to update the primer for:\n\n{deck_summary}\n\n"
             f"Here is the existing primer:\n\n{existing}\n\n"
             "Please ask me questions to fill in gaps or improve weak sections."
         )
+    elif primer_path.exists() and NOTICE_MARKER in primer_path.read_text(encoding="utf-8"):
+        # Deck changed since primer was written — treat like a resume session
+        existing = strip_update_notice(primer_path.read_text(encoding="utf-8"))
+        initial_msg = (
+            f"This deck was updated on Archidekt since the primer was written.\n\n"
+            f"Deck:\n\n{deck_summary}\n\n"
+            f"Existing primer:\n\n{existing}\n\n"
+            "Ask me targeted questions about what may have changed, then help "
+            "me update the primer to reflect the current list."
+        )
+        print(c("  Deck changed since last primer — resuming in update mode.\n", YELLOW))
 
     model = build_model(api_key)
     chat  = model.start_chat()
@@ -334,7 +386,7 @@ def run_session(slug: str, resume: bool = False) -> None:
     # Save the primer
     # -------------------------------------------------------------------
     if final_primer:
-        primer_path.write_text(final_primer + "\n", encoding="utf-8")
+        primer_path.write_text(strip_update_notice(final_primer) + "\n", encoding="utf-8")
         print()
         hr()
         print(c(f"  Primer saved to {primer_path}", GREEN + BOLD))
@@ -366,7 +418,11 @@ def main() -> None:
     )
     ap.add_argument(
         "--list", action="store_true",
-        help="List all available deck slugs and exit",
+        help="List all decks and their primer status, then exit",
+    )
+    ap.add_argument(
+        "--all", action="store_true",
+        help="Loop through every deck that needs a primer (stub or needs-update)",
     )
     ap.add_argument(
         "--resume", action="store_true",
@@ -374,26 +430,71 @@ def main() -> None:
     )
     args = ap.parse_args()
 
-    if args.list or not args.slug:
+    if args.list:
         slugs = sorted(
             d.name for d in DECKS_DIR.iterdir()
             if d.is_dir() and not d.name.startswith("_")
         )
         if not slugs:
             print("No decks imported yet. Run: python3 scripts/import_archidekt.py")
-        else:
-            print("Available decks:")
-            for s in slugs:
-                meta_path = DECKS_DIR / s / "meta.yaml"
-                commander = ""
-                if meta_path.exists():
-                    m = yaml.safe_load(meta_path.read_text()) or {}
-                    commander = m.get("commander", "")
-                primer_exists = (DECKS_DIR / s / "primer.md").exists()
-                stub_marker   = "(stub)" if not primer_exists else ""
-                print(f"  {s:<40} {commander:<30} {stub_marker}")
-        if not args.slug:
-            ap.print_help()
+            sys.exit(0)
+
+        STATUS_LABEL = {
+            "done":         c("  done        ", DIM),
+            "stub":         c("  stub        ", YELLOW),
+            "needs-update": c("  needs-update", CYAN),
+            "missing":      c("  missing     ", YELLOW),
+        }
+        print(f"\n  {'Deck':<42} {'Commander':<32} Status")
+        print(c("  " + "─" * 80, DIM))
+        for s in slugs:
+            meta_path = DECKS_DIR / s / "meta.yaml"
+            commander = ""
+            if meta_path.exists():
+                m = yaml.safe_load(meta_path.read_text()) or {}
+                commander = m.get("commander", "")
+            status = primer_status(s)
+            print(f"  {s:<42} {commander:<32} {STATUS_LABEL[status]}")
+        print()
+        sys.exit(0)
+
+    if args.all:
+        pending = decks_needing_primers()
+        if not pending:
+            print("All primers are up to date.")
+            sys.exit(0)
+
+        print(f"\n{len(pending)} deck(s) need primer work:\n")
+        for slug, status in pending:
+            label = "stub" if status in ("stub", "missing") else "needs update"
+            print(f"  {slug}  ({label})")
+        print()
+
+        for i, (slug, status) in enumerate(pending, 1):
+            print(c(f"\n[{i}/{len(pending)}] {slug}", BOLD))
+            try:
+                run_session(slug, resume=(status == "needs-update"))
+            except KeyboardInterrupt:
+                print(c("\n\nSkipping to next deck…", DIM))
+                continue
+
+            if i < len(pending):
+                try:
+                    cont = input(c(f"\nContinue to next deck ({pending[i][0]})? [Y/n]: ", CYAN)).strip().lower()
+                except (EOFError, KeyboardInterrupt):
+                    print()
+                    break
+                if cont in ("n", "no"):
+                    break
+        print(c("\nDone.", BOLD))
+        sys.exit(0)
+
+    if not args.slug:
+        pending = decks_needing_primers()
+        if pending:
+            print(f"\n{len(pending)} deck(s) need primer work. Run with --all to loop through them,")
+            print("or pass a specific deck slug. Use --list to see all decks.\n")
+        ap.print_help()
         sys.exit(0)
 
     run_session(args.slug, resume=args.resume)
