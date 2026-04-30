@@ -536,7 +536,10 @@ def process_deck(
 
     print(f"\n── {deck_name}  (id={deck_id})  →  {slug}")
 
-    if not force and (deck_dir / "cards.json").exists():
+    deck_previously_imported = (deck_dir / "cards.json").exists()
+    deck_changed = True  # assume changed unless we can prove otherwise
+
+    if not force and deck_previously_imported:
         # Skip if Archidekt says the deck hasn't changed since last import
         stub_updated = _get_updated_at(deck_stub)
         meta_path_check = deck_dir / "meta.yaml"
@@ -616,13 +619,42 @@ def process_deck(
     print(f"   wrote {meta_path.name}")
 
     primer_path = deck_dir / "primer.md"
-    primer_is_stub = (
-        not primer_path.exists()
-        or "This primer is a stub" in primer_path.read_text(encoding="utf-8")
-    )
+    if primer_path.exists():
+        primer_text = primer_path.read_text(encoding="utf-8")
+        primer_is_stub = "This primer is a stub" in primer_text
+    else:
+        primer_text = ""
+        primer_is_stub = True
+
     if primer_is_stub:
         primer_path.write_text(PRIMER_STUB.format(name=deck_name, slug=slug))
         print(f"   wrote {primer_path.name} (stub)")
+    elif deck_previously_imported:
+        # Real primer exists and the deck changed — prepend an update notice.
+        # Don't add a duplicate notice if one is already there from a prior run.
+        from datetime import date
+        notice_marker = "<!-- deck-updated-notice -->"
+        notice = (
+            f"{notice_marker}\n"
+            f"> [!WARNING]\n"
+            f"> **Deck updated on Archidekt ({date.today()})** — "
+            f"the decklist has changed since this primer was written. "
+            f"Review `decklist.md` and update this primer as needed.\n\n"
+        )
+        if notice_marker not in primer_text:
+            primer_path.write_text(notice + primer_text, encoding="utf-8")
+        else:
+            # Refresh the date on the existing notice
+            import re as _re
+            updated = _re.sub(
+                r"<!-- deck-updated-notice -->.*?\n\n",
+                notice,
+                primer_text,
+                count=1,
+                flags=_re.DOTALL,
+            )
+            primer_path.write_text(updated, encoding="utf-8")
+        print(f"   updated {primer_path.name} with change notice")
 
     print(f"   ✓  done")
 
