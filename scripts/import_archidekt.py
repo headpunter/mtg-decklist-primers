@@ -205,10 +205,6 @@ def get_folder_decks(folder_id: int, sess: requests.Session) -> list[dict]:
             f"https://archidekt.com/decks/123456\n"
         )
     return stubs
-        page += 1
-        time.sleep(0.4)
-
-    return decks
 
 
 def get_deck_full(deck_id: int, sess: requests.Session) -> dict:
