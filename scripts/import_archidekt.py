@@ -90,28 +90,83 @@ def scryfall_session() -> requests.Session:
 # Archidekt API
 # ---------------------------------------------------------------------------
 
+def _probe_folder_endpoint(folder_id: int, sess: requests.Session) -> str | None:
+    """
+    Archidekt's API has changed over time. Try several known patterns and
+    return the first URL that responds with 200 + a JSON list/object.
+    Returns None if none succeed.
+    """
+    candidates = [
+        # Current v2 API (seen in DevTools as of 2024–2025)
+        f"{ARCHIDEKT_API}/decks/?folder={folder_id}&pageSize=1",
+        # Older flat listing
+        f"{ARCHIDEKT_API}/decks/?folders={folder_id}&pageSize=1",
+        # Nested folder resource
+        f"{ARCHIDEKT_API}/decks/folders/{folder_id}/",
+        # Some installs use /v2/
+        f"https://archidekt.com/api/v2/decks/?folder={folder_id}&pageSize=1",
+    ]
+    for url in candidates:
+        try:
+            r = sess.get(url, timeout=10)
+            if r.status_code == 200:
+                print(f"  ✓  working endpoint: {url.split('?')[0]}")
+                return url.split("?")[0]  # return base without probe params
+        except Exception:
+            pass
+    return None
+
+
 def get_folder_decks(folder_id: int, sess: requests.Session) -> list[dict]:
     """Return all deck stubs (id + name) from an Archidekt folder."""
+    base = _probe_folder_endpoint(folder_id, sess)
+    if base is None:
+        print(
+            f"\n  Could not find a working API endpoint for folder {folder_id}.\n"
+            f"\n  To get your deck IDs manually:\n"
+            f"  1. Open https://archidekt.com/folders/{folder_id} in your browser\n"
+            f"  2. Open DevTools → Network tab → refresh the page\n"
+            f"  3. Look for a request to archidekt.com/api/ that returns a list of decks\n"
+            f"  4. Copy the deck IDs and run:\n"
+            f"       python scripts/import_archidekt.py --decks ID1 ID2 ID3 ...\n"
+            f"\n  Or paste full Archidekt deck URLs:\n"
+            f"       python scripts/import_archidekt.py --decks "
+            f"https://archidekt.com/decks/123456\n"
+        )
+        return []
+
     decks = []
     page = 1
     while True:
-        url = f"{ARCHIDEKT_API}/decks/"
-        params = {"folder": folder_id, "pageSize": 50, "page": page}
+        params: dict = {"pageSize": 50, "page": page}
+        # Some endpoints embed folder in path, others as a query param
+        if "folder" not in base:
+            params["folder"] = folder_id
+
         try:
-            resp = sess.get(url, params=params, timeout=15)
+            resp = sess.get(base, params=params, timeout=15)
             resp.raise_for_status()
         except requests.HTTPError as e:
-            if e.response.status_code == 403:
-                print(f"  403 on folder {folder_id} — folder may be private or require login.")
-                print("  Set ARCHIDEKT_TOKEN env var with your bearer token and retry.")
-                return decks
-            raise
+            code = e.response.status_code
+            if code == 403:
+                print(f"  403 — folder may be private. Set ARCHIDEKT_TOKEN and retry.")
+            else:
+                print(f"  HTTP {code} fetching page {page}: {e}")
+            return decks
 
         data = resp.json()
-        results = data.get("results", [])
+        # Handle both {"results": [...]} and bare list responses
+        if isinstance(data, list):
+            results = data
+            has_next = False
+        else:
+            results = data.get("results", [])
+            has_next = bool(data.get("next"))
+
         decks.extend(results)
         print(f"    page {page}: {len(results)} decks")
-        if not data.get("next"):
+
+        if not has_next:
             break
         page += 1
         time.sleep(0.4)
@@ -465,9 +520,12 @@ def main() -> None:
         help="Archidekt folder IDs to scan (default: 1550171 1583741)",
     )
     ap.add_argument(
-        "--decks", nargs="+", type=int, default=None,
-        metavar="ID",
-        help="Import specific deck IDs directly, skipping folder lookup",
+        "--decks", nargs="+", type=str, default=None,
+        metavar="ID_OR_URL",
+        help=(
+            "Import specific decks by ID or full URL, skipping folder lookup. "
+            "Accepts integers or https://archidekt.com/decks/<id> URLs."
+        ),
     )
     ap.add_argument(
         "--force", action="store_true",
@@ -482,17 +540,29 @@ def main() -> None:
     DECKS_DIR.mkdir(exist_ok=True)
 
     if args.decks:
-        # Direct deck IDs — no folder lookup needed
-        for deck_id in args.decks:
+        # Resolve IDs from integers or full Archidekt URLs
+        def resolve_id(raw: str) -> int | None:
+            raw = raw.strip().rstrip("/")
+            if raw.isdigit():
+                return int(raw)
+            # https://archidekt.com/decks/123456  or  .../decks/123456/deckname
+            m = re.search(r"/decks/(\d+)", raw)
+            if m:
+                return int(m.group(1))
+            print(f"  WARN: could not parse deck ID from '{raw}' — skipping")
+            return None
+
+        for raw in args.decks:
+            deck_id = resolve_id(raw)
+            if deck_id is None:
+                continue
             stub = {"id": deck_id}
-            # Try to get the name first
             try:
                 deck = get_deck_full(deck_id, arch_sess)
                 stub["name"] = deck.get("name", f"deck-{deck_id}")
-                # Reuse the already-fetched deck to avoid a second request
                 process_deck(stub, arch_sess, sf_sess, force=args.force)
             except Exception as e:
-                print(f"ERROR on deck {deck_id}: {e}")
+                print(f"  ERROR on deck {deck_id}: {e}")
         return
 
     # Folder-based import
