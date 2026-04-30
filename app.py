@@ -191,8 +191,7 @@ async def index(request: Request):
     concept = sum(1 for d in decks if d.get("status") != "built")
     primers_done = sum(1 for d in decks if d["primer_status"] == "done")
 
-    return templates.TemplateResponse("index.html", {
-        "request":      request,
+    return templates.TemplateResponse(request, "index.html", {
         "decks":        decks,
         "total":        len(decks),
         "built":        built,
@@ -206,8 +205,7 @@ async def index(request: Request):
 @app.get("/recommend", response_class=HTMLResponse)
 async def recommend_page(request: Request):
     decks = load_decks()
-    return templates.TemplateResponse("recommend.html", {
-        "request":     request,
+    return templates.TemplateResponse(request, "recommend.html", {
         "decks":       decks,
         "ai_provider": AI_PROVIDER,
         "total":       len(decks),
@@ -262,8 +260,7 @@ async def deck_detail(request: Request, slug: str):
     colors = meta.get("colors") or []
     colors_sorted = sorted(colors, key=lambda x: COLOR_ORDER.index(x) if x in COLOR_ORDER else 99)
 
-    return templates.TemplateResponse("deck.html", {
-        "request":        request,
+    return templates.TemplateResponse(request, "deck.html", {
         "meta":           meta,
         "slug":           slug,
         "cards":          cards,
