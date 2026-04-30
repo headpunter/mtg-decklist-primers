@@ -759,7 +759,9 @@ def main() -> None:
 
     DECKS_DIR.mkdir(exist_ok=True)
 
-    if args.username:
+    # --decks and --folders take priority over --username (which can come from env var)
+    username_was_explicit = "--username" in sys.argv
+    if args.username and username_was_explicit:
         print(f"\nScanning all public decks for user '{args.username}' …")
         stubs = get_user_decks(args.username, arch_sess)
         print(f"  found {len(stubs)} decks\n")
