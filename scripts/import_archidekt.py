@@ -174,11 +174,40 @@ def get_folder_decks(folder_id: int, sess: requests.Session) -> list[dict]:
                 else:
                     print(f"  HTTP {code} on page {page}: {e}")
                 return decks
+
             data = resp.json()
+
+            # Debug: show structure on first page so we can fix parsing if needed
+            if page == 1:
+                if isinstance(data, dict):
+                    top_keys = list(data.keys())
+                    print(f"  response keys: {top_keys}")
+                    # Show a preview of any list values to identify the right key
+                    for k, v in data.items():
+                        if isinstance(v, list):
+                            print(f"  '{k}' is a list with {len(v)} items")
+                elif isinstance(data, list):
+                    print(f"  response is a bare list with {len(data)} items")
+
+            # Handle every structure we've seen from Archidekt:
+            #   {"results": [...], "next": "..."}   — standard DRF paginated
+            #   {"decks": [...]}                     — folder object with embedded decks
+            #   [...]                                — bare list
             if isinstance(data, list):
                 results, has_next = data, False
+            elif "results" in data:
+                results, has_next = data["results"], bool(data.get("next"))
+            elif "decks" in data:
+                results, has_next = data["decks"], False
             else:
-                results, has_next = data.get("results", []), bool(data.get("next"))
+                # Unknown structure — grab the first list value we find
+                results = next(
+                    (v for v in data.values() if isinstance(v, list)), []
+                )
+                has_next = False
+                if not results:
+                    print(f"  WARNING: unrecognised response shape, got: {str(data)[:300]}")
+
             decks.extend(results)
             print(f"    page {page}: {len(results)} decks")
             if not has_next:
