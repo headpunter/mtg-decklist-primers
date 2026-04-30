@@ -49,7 +49,7 @@ ARCHIDEKT_API = "https://archidekt.com/api"
 SCRYFALL_API  = "https://api.scryfall.com"
 DECKS_DIR     = Path(__file__).parent.parent / "decks"
 
-DEFAULT_FOLDER_IDS = [1550171, 1583741]
+DEFAULT_FOLDER_IDS = [1550171, 1583741, 1583742]
 
 # Scryfall image sizes: small (146×204), normal (488×680), large (672×936)
 IMAGE_SIZE = "small"
