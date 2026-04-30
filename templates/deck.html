@@ -1,0 +1,130 @@
+{% extends "base.html" %}
+{% block title %}{{ meta.commander or meta.deck_name or slug }}{% endblock %}
+
+{% block content %}
+<div class="deck-detail-header">
+  {% if meta.get('links', {}).get('archidekt') %}
+  <a href="{{ meta.links.archidekt }}" target="_blank" class="back-link">↗ View on Archidekt</a>
+  {% endif %}
+  <a href="/" class="back-link">← All Decks</a>
+
+  <div class="deck-detail-hero">
+    {% set commander_art = '' %}
+    {% for cat, cards in by_cat.items() %}
+      {% if cat == 'Commander' and cards %}
+        {% set commander_art = cards[0].image_url_normal or cards[0].image_url %}
+      {% endif %}
+    {% endfor %}
+
+    <div class="detail-art-wrap">
+      {% if commander_art %}
+      <img class="detail-art" src="{{ commander_art }}" alt="{{ meta.commander }}">
+      {% endif %}
+    </div>
+
+    <div class="detail-meta">
+      <h1>{{ meta.commander or meta.deck_name or slug }}</h1>
+      <div class="deck-colors large">
+        {% for color in colors_sorted %}
+        <span class="pip pip-{{ color }} large">{{ color }}</span>
+        {% endfor %}
+      </div>
+      {% if meta.themes %}
+      <div class="detail-themes">{{ meta.themes | join(' · ') }}</div>
+      {% endif %}
+      <div class="detail-stats">
+        <span class="badge {% if meta.status == 'built' %}badge-built{% else %}badge-concept{% endif %}">
+          {{ meta.status or 'concept' }}
+        </span>
+        {% if meta.power_level %}<span class="badge">Power {{ meta.power_level }}</span>{% endif %}
+        <span class="badge {% if primer_status == 'done' %}badge-primer{% elif primer_status == 'needs-update' %}badge-warn{% else %}badge-muted{% endif %}">
+          Primer: {{ primer_status }}
+        </span>
+        <span class="badge">{{ total_cards }} cards</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="deck-detail-body">
+
+  {% if primer %}
+  <section class="primer-section">
+    <h2>Primer</h2>
+    <div class="markdown-body primer-body" id="primer-content" data-raw="{{ primer | e }}"></div>
+    <script>
+      document.addEventListener('DOMContentLoaded', () => {
+        const el = document.getElementById('primer-content');
+        el.innerHTML = marked.parse(el.dataset.raw);
+      });
+    </script>
+  </section>
+  {% else %}
+  <section class="primer-section">
+    <div class="alert alert-muted">
+      No primer yet. Run <code>python3 scripts/build_primer.py {{ slug }}</code> to generate one.
+    </div>
+  </section>
+  {% endif %}
+
+  <section class="decklist-section">
+    <h2>Decklist <span class="muted">({{ total_cards }} cards)</span></h2>
+    {% for cat in ['Commander', 'Creature', 'Instant', 'Sorcery', 'Enchantment', 'Artifact', 'Planeswalker', 'Battle', 'Land'] %}
+      {% if by_cat.get(cat) %}
+      <details open>
+        <summary>{{ cat }} <span class="cat-count">({{ by_cat[cat] | sum(attribute='qty') }})</span></summary>
+        <div class="card-grid">
+          {% for card in by_cat[cat] | sort(attribute='name') %}
+          <div class="card-item">
+            {% if card.image_url %}
+            <img class="card-thumb" src="{{ card.image_url }}" alt="{{ card.name }}" loading="lazy">
+            {% endif %}
+            <div class="card-item-info">
+              <div class="card-item-name">
+                {% if card.scryfall_url %}
+                <a href="{{ card.scryfall_url }}" target="_blank">{{ card.name }}</a>
+                {% else %}{{ card.name }}{% endif %}
+                {% if card.qty > 1 %}<span class="card-qty">×{{ card.qty }}</span>{% endif %}
+              </div>
+              {% if card.mana_cost %}<div class="card-mana muted">{{ card.mana_cost }}</div>{% endif %}
+              {% if card.type_line %}<div class="card-type muted">{{ card.type_line }}</div>{% endif %}
+              {% if card.oracle_text %}<div class="card-oracle">{{ card.oracle_text }}</div>{% endif %}
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+      </details>
+      {% endif %}
+    {% endfor %}
+    {# Catch-all for custom categories #}
+    {% for cat, cards in by_cat.items() %}
+      {% if cat not in ['Commander','Creature','Instant','Sorcery','Enchantment','Artifact','Planeswalker','Battle','Land'] %}
+      <details open>
+        <summary>{{ cat }} <span class="cat-count">({{ cards | sum(attribute='qty') }})</span></summary>
+        <div class="card-grid">
+          {% for card in cards | sort(attribute='name') %}
+          <div class="card-item">
+            {% if card.image_url %}
+            <img class="card-thumb" src="{{ card.image_url }}" alt="{{ card.name }}" loading="lazy">
+            {% endif %}
+            <div class="card-item-info">
+              <div class="card-item-name">
+                {% if card.scryfall_url %}
+                <a href="{{ card.scryfall_url }}" target="_blank">{{ card.name }}</a>
+                {% else %}{{ card.name }}{% endif %}
+                {% if card.qty > 1 %}<span class="card-qty">×{{ card.qty }}</span>{% endif %}
+              </div>
+              {% if card.mana_cost %}<div class="card-mana muted">{{ card.mana_cost }}</div>{% endif %}
+              {% if card.type_line %}<div class="card-type muted">{{ card.type_line }}</div>{% endif %}
+              {% if card.oracle_text %}<div class="card-oracle">{{ card.oracle_text }}</div>{% endif %}
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+      </details>
+      {% endif %}
+    {% endfor %}
+  </section>
+
+</div>
+{% endblock %}

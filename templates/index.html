@@ -1,0 +1,103 @@
+{% extends "base.html" %}
+{% block title %}EDH Collection — {{ total }} Decks{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1>My EDH Collection</h1>
+    {% if username %}<p class="subtitle">{{ username }} on Archidekt</p>{% endif %}
+  </div>
+  <div class="stats">
+    <div class="stat"><span class="stat-num">{{ total }}</span><span class="stat-label">decks</span></div>
+    <div class="stat"><span class="stat-num">{{ built }}</span><span class="stat-label">built</span></div>
+    <div class="stat"><span class="stat-num">{{ concept }}</span><span class="stat-label">concept</span></div>
+    <div class="stat"><span class="stat-num">{{ primers_done }}</span><span class="stat-label">primers done</span></div>
+  </div>
+</div>
+
+<div class="filters">
+  <input type="search" id="search" placeholder="Search commander, theme, color…" oninput="filterDecks()">
+  <div class="filter-pills">
+    <button class="pill active" onclick="filterColor(this, '')">All</button>
+    <button class="pill pip-W" onclick="filterColor(this, 'W')">W</button>
+    <button class="pill pip-U" onclick="filterColor(this, 'U')">U</button>
+    <button class="pill pip-B" onclick="filterColor(this, 'B')">B</button>
+    <button class="pill pip-R" onclick="filterColor(this, 'R')">R</button>
+    <button class="pill pip-G" onclick="filterColor(this, 'G')">G</button>
+  </div>
+  <div class="filter-pills">
+    <button class="pill active" onclick="filterStatus(this, '')">All</button>
+    <button class="pill" onclick="filterStatus(this, 'built')">Built</button>
+    <button class="pill" onclick="filterStatus(this, 'concept')">Concept</button>
+  </div>
+</div>
+
+<div class="deck-grid" id="deck-grid">
+  {% for deck in decks %}
+  <a href="/deck/{{ deck.slug }}"
+     class="deck-card"
+     data-name="{{ (deck.commander or deck.deck_name or deck.slug) | lower }}"
+     data-themes="{{ (deck.themes or []) | join(' ') | lower }}"
+     data-colors="{{ deck.colors_sorted | join('') }}"
+     data-status="{{ deck.status or 'concept' }}">
+
+    <div class="deck-art" {% if deck.commander_art %}style="background-image: url('{{ deck.commander_art }}')"{% endif %}>
+      {% if not deck.commander_art %}<span class="art-placeholder">⚔</span>{% endif %}
+      <div class="deck-badges">
+        {% if deck.status == 'built' %}<span class="badge badge-built">Built</span>{% endif %}
+        {% if deck.primer_status == 'done' %}<span class="badge badge-primer">Primer</span>
+        {% elif deck.primer_status == 'needs-update' %}<span class="badge badge-warn">⚠ Updated</span>{% endif %}
+      </div>
+    </div>
+
+    <div class="deck-info">
+      <div class="deck-commander">{{ deck.commander or deck.deck_name or deck.slug }}</div>
+      <div class="deck-colors">
+        {% for color in deck.colors_sorted %}
+        <span class="pip pip-{{ color }}">{{ color }}</span>
+        {% endfor %}
+        {% if not deck.colors_sorted %}<span class="pip pip-C">C</span>{% endif %}
+      </div>
+      {% if deck.themes %}
+      <div class="deck-themes">{{ deck.themes | join(' · ') }}</div>
+      {% endif %}
+    </div>
+  </a>
+  {% endfor %}
+</div>
+
+<div id="no-results" style="display:none" class="empty-state">No decks match your filters.</div>
+
+<script>
+let activeColor = '';
+let activeStatus = '';
+
+function filterDecks() {
+  const q = document.getElementById('search').value.toLowerCase();
+  let shown = 0;
+  document.querySelectorAll('.deck-card').forEach(card => {
+    const nameMatch   = card.dataset.name.includes(q) || card.dataset.themes.includes(q);
+    const colorMatch  = !activeColor || card.dataset.colors.includes(activeColor);
+    const statusMatch = !activeStatus || card.dataset.status === activeStatus;
+    const visible = nameMatch && colorMatch && statusMatch;
+    card.style.display = visible ? '' : 'none';
+    if (visible) shown++;
+  });
+  document.getElementById('no-results').style.display = shown ? 'none' : '';
+}
+
+function filterColor(btn, color) {
+  activeColor = color;
+  document.querySelectorAll('.filter-pills:nth-child(2) .pill').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  filterDecks();
+}
+
+function filterStatus(btn, status) {
+  activeStatus = status;
+  document.querySelectorAll('.filter-pills:nth-child(3) .pill').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  filterDecks();
+}
+</script>
+{% endblock %}

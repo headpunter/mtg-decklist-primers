@@ -1,6 +1,13 @@
-# Core dependencies
-requests>=2.31.0          # HTTP for Archidekt + Scryfall APIs
-pyyaml>=6.0               # read/write meta.yaml and owned.yaml
+# Importing + enrichment
+requests>=2.31.0
+pyyaml>=6.0
 
-# Primer builder
-google-generativeai>=0.7  # Gemini API (build_primer.py)
+# Web app
+fastapi>=0.111.0
+uvicorn[standard]>=0.29.0
+jinja2>=3.1.0
+python-multipart>=0.0.9
+
+# AI providers (install whichever you use)
+google-generativeai>=0.7
+anthropic>=0.28.0

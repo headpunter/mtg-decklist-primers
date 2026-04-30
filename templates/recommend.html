@@ -1,0 +1,106 @@
+{% extends "base.html" %}
+{% block title %}What Should I Build Next?{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1>What Should I Build Next?</h1>
+    <p class="subtitle">Feed your {{ total }} decks into AI and get a recommendation</p>
+  </div>
+</div>
+
+{% if not ai_provider %}
+<div class="alert alert-warn">
+  No AI API key configured. Set <code>GEMINI_API_KEY</code> or <code>ANTHROPIC_API_KEY</code> in your <code>.env</code> file.
+</div>
+{% else %}
+
+<div class="recommend-layout">
+  <form id="recommend-form" class="recommend-form">
+    <label for="user_context">
+      Tell the AI about your preferences <span class="muted">(optional)</span>
+    </label>
+    <textarea
+      id="user_context"
+      name="user_context"
+      rows="4"
+      placeholder="e.g. I prefer midrange decks, budget under $200, I want something more interactive, I've been on a combo kick lately and want a change…"
+    ></textarea>
+
+    <div class="deck-snapshot">
+      <div class="snapshot-title">Collection snapshot — {{ total }} decks</div>
+      <div class="snapshot-grid">
+        {% for deck in decks %}
+        <div class="snapshot-row {% if deck.status == 'built' %}is-built{% endif %}">
+          <span class="snapshot-name">{{ deck.commander or deck.deck_name or deck.slug }}</span>
+          <span class="snapshot-colors">
+            {% for c in deck.colors_sorted %}<span class="pip pip-{{ c }}">{{ c }}</span>{% endfor %}
+          </span>
+          <span class="snapshot-status">{{ deck.status or 'concept' }}</span>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+
+    <button type="submit" class="btn-primary" id="generate-btn">
+      ✦ Generate Recommendations
+    </button>
+  </form>
+
+  <div class="recommend-output" id="output-panel">
+    <div class="output-placeholder" id="output-placeholder">
+      <span>Recommendations will appear here</span>
+    </div>
+    <div id="output-content" style="display:none">
+      <div id="output-text" class="markdown-body"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+document.getElementById('recommend-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+
+  const btn = document.getElementById('generate-btn');
+  const placeholder = document.getElementById('output-placeholder');
+  const content = document.getElementById('output-content');
+  const outputText = document.getElementById('output-text');
+
+  btn.disabled = true;
+  btn.textContent = '✦ Thinking…';
+  placeholder.style.display = 'none';
+  content.style.display = '';
+  outputText.innerHTML = '<span class="generating">Generating…</span>';
+
+  const formData = new FormData(e.target);
+
+  try {
+    const resp = await fetch('/recommend/generate', {
+      method: 'POST',
+      body: formData,
+    });
+
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+
+    const reader = resp.body.getReader();
+    const decoder = new TextDecoder();
+    let fullText = '';
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      fullText += decoder.decode(value, { stream: true });
+      // Re-render markdown as text streams in
+      outputText.innerHTML = marked.parse(fullText);
+      outputText.scrollIntoView({ behavior: 'smooth', block: 'end' });
+    }
+  } catch (err) {
+    outputText.innerHTML = `<p class="error">Error: ${err.message}</p>`;
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '✦ Generate Recommendations';
+  }
+});
+</script>
+{% endif %}
+{% endblock %}

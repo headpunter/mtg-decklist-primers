@@ -659,6 +659,32 @@ def process_deck(
     print(f"   ✓  done")
 
 
+def get_user_decks(username: str, sess: requests.Session) -> list[dict]:
+    """Fetch all public decks for an Archidekt username."""
+    decks = []
+    next_url: str | None = f"{ARCHIDEKT_API}/decks/"
+    init_params = {"owner__username": username, "pageSize": 50}
+    page = 1
+    while next_url:
+        try:
+            resp = sess.get(next_url, params=init_params if page == 1 else None, timeout=15)
+            resp.raise_for_status()
+        except requests.HTTPError as e:
+            print(f"  HTTP {e.response.status_code} fetching page {page}: {e}")
+            break
+        data = resp.json()
+        results = data.get("results", []) if isinstance(data, dict) else data
+        decks.extend(results)
+        print(f"    page {page}: {len(results)} decks  (total so far: {len(decks)})")
+        next_url = data.get("next") if isinstance(data, dict) else None
+        if not isinstance(next_url, str) or not next_url:
+            next_url = None
+        page += 1
+        if next_url:
+            time.sleep(0.3)
+    return decks
+
+
 # ---------------------------------------------------------------------------
 # Entry point
 # ---------------------------------------------------------------------------
@@ -670,9 +696,14 @@ def main() -> None:
         epilog=__doc__,
     )
     ap.add_argument(
+        "--username", type=str, default=os.environ.get("ARCHIDEKT_USERNAME"),
+        metavar="NAME",
+        help="Archidekt username — imports ALL public decks for that user",
+    )
+    ap.add_argument(
         "--folders", nargs="+", type=int, default=DEFAULT_FOLDER_IDS,
         metavar="ID",
-        help="Archidekt folder IDs to scan (default: 1550171 1583741)",
+        help="Archidekt folder IDs to scan (default: 1550171 1583741 1583742)",
     )
     ap.add_argument(
         "--decks", nargs="+", type=str, default=None,
@@ -688,11 +719,23 @@ def main() -> None:
     )
     args = ap.parse_args()
 
-    token    = os.environ.get("ARCHIDEKT_TOKEN")
+    token     = os.environ.get("ARCHIDEKT_TOKEN")
     arch_sess = archidekt_session(token)
     sf_sess   = scryfall_session()
 
     DECKS_DIR.mkdir(exist_ok=True)
+
+    if args.username:
+        print(f"\nScanning all public decks for user '{args.username}' …")
+        stubs = get_user_decks(args.username, arch_sess)
+        print(f"  found {len(stubs)} decks\n")
+        for stub in stubs:
+            try:
+                process_deck(stub, arch_sess, sf_sess, force=args.force)
+            except Exception as e:
+                print(f"   ERROR: {e}")
+        print("\n\nAll done.")
+        return
 
     if args.decks:
         # Resolve IDs from integers or full Archidekt URLs
