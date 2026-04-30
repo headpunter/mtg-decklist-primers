@@ -200,8 +200,8 @@ def get_folder_decks(folder_id: int, sess: requests.Session) -> list[dict]:
                 # Only continue paginating if "next" is a non-null URL
                 has_next = isinstance(data.get("next"), str) and bool(data["next"])
             elif "decks" in data:
-                # Folder object — all decks returned at once, no pagination
-                results, has_next = data["decks"], False
+                results = data["decks"]
+                has_next = isinstance(data.get("next"), str) and bool(data["next"])
             else:
                 # Unknown structure — grab the first list value we find
                 results = next(
