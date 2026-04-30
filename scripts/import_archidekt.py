@@ -159,13 +159,20 @@ def get_folder_decks(folder_id: int, sess: requests.Session) -> list[dict]:
 
     if base is not None:
         decks = []
+        # Start with the base URL + initial params; then follow Archidekt's
+        # own "next" URLs rather than constructing ?page=N ourselves.
+        next_url: str | None = base
+        init_params: dict = {}
+        if "folder" not in base:
+            init_params["folder"] = folder_id
         page = 1
-        while True:
-            params: dict = {"pageSize": 50, "page": page}
-            if "folder" not in base:
-                params["folder"] = folder_id
+        while next_url:
             try:
-                resp = sess.get(base, params=params, timeout=15)
+                # First page uses init_params; subsequent pages follow next_url verbatim
+                if page == 1:
+                    resp = sess.get(next_url, params=init_params, timeout=15)
+                else:
+                    resp = sess.get(next_url, timeout=15)
                 resp.raise_for_status()
             except requests.HTTPError as e:
                 code = e.response.status_code
@@ -176,18 +183,6 @@ def get_folder_decks(folder_id: int, sess: requests.Session) -> list[dict]:
                 return decks
 
             data = resp.json()
-
-            # Debug: show structure on first page so we can fix parsing if needed
-            if page == 1:
-                if isinstance(data, dict):
-                    top_keys = list(data.keys())
-                    print(f"  response keys: {top_keys}")
-                    # Show a preview of any list values to identify the right key
-                    for k, v in data.items():
-                        if isinstance(v, list):
-                            print(f"  '{k}' is a list with {len(v)} items")
-                elif isinstance(data, list):
-                    print(f"  response is a bare list with {len(data)} items")
 
             # Handle every structure we've seen from Archidekt:
             #   {"results": [...], "next": "..."}   — standard DRF paginated
@@ -212,11 +207,13 @@ def get_folder_decks(folder_id: int, sess: requests.Session) -> list[dict]:
                     print(f"  WARNING: unrecognised response shape, got: {str(data)[:300]}")
 
             decks.extend(results)
-            print(f"    page {page}: {len(results)} decks")
-            if not has_next:
-                break
+            print(f"    page {page}: {len(results)} decks  (total so far: {len(decks)})")
+            next_url = data.get("next") if isinstance(data, dict) else None
+            if not isinstance(next_url, str) or not next_url:
+                next_url = None
             page += 1
-            time.sleep(0.4)
+            if next_url:
+                time.sleep(0.4)
         return decks
 
     # API failed — fall back to scraping the folder HTML page
