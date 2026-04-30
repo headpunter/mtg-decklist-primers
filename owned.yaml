@@ -1,0 +1,9 @@
+# Tracks decks that are physically built and owned.
+# Decks listed here are excluded when querying for next-build recommendations.
+#
+# Format:
+#   - slug: deck-slug
+#     built_date: YYYY-MM-DD   # date the deck was sleeved up
+#     notes: optional notes
+
+built: []

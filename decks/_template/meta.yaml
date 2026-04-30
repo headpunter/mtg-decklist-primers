@@ -1,0 +1,15 @@
+# Deck metadata — copy this folder to decks/<deck-slug>/ and fill it in.
+
+slug: deck-slug                  # matches folder name
+commander: Full Card Name
+colors: [W, U, B, R, G]          # subset of W U B R G C
+themes: [theme1, theme2]         # e.g. tokens, combo, voltron, reanimator
+power_level: 6                   # 1–10 estimate
+format: EDH
+
+status: concept                  # concept | paper | built
+# 'built' means sleeved and ready to play — also add to owned.yaml
+
+links:
+  moxfield: ""
+  archidekt: ""
