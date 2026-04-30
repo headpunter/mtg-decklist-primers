@@ -90,84 +90,121 @@ def scryfall_session() -> requests.Session:
 # Archidekt API
 # ---------------------------------------------------------------------------
 
+def scrape_folder_page(folder_id: int, sess: requests.Session) -> list[dict]:
+    """
+    Fallback: fetch the Archidekt folder HTML page and extract deck IDs
+    from links of the form /decks/<id>/... — no API key required.
+    """
+    url = f"https://archidekt.com/folders/{folder_id}"
+    # Request as a browser so Cloudflare/SSR doesn't block us
+    html_sess = requests.Session()
+    html_sess.headers.update({
+        "User-Agent": (
+            "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
+            "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+        ),
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.9",
+    })
+    # Copy auth cookies if the session has them
+    html_sess.cookies.update(sess.cookies)
+
+    try:
+        resp = html_sess.get(url, timeout=20)
+        resp.raise_for_status()
+    except Exception as e:
+        print(f"  Could not fetch folder page: {e}")
+        return []
+
+    # Extract all unique deck IDs from href="/decks/<id>" links
+    ids_seen: set[int] = set()
+    stubs: list[dict] = []
+    for m in re.finditer(r'href=["\']?/decks/(\d+)(?:/[^"\'> ]*)?["\']?', resp.text):
+        deck_id = int(m.group(1))
+        if deck_id not in ids_seen:
+            ids_seen.add(deck_id)
+            stubs.append({"id": deck_id})
+
+    return stubs
+
+
 def _probe_folder_endpoint(folder_id: int, sess: requests.Session) -> str | None:
     """
-    Archidekt's API has changed over time. Try several known patterns and
-    return the first URL that responds with 200 + a JSON list/object.
-    Returns None if none succeed.
+    Try several known Archidekt API patterns and return the base URL of the
+    first one that returns HTTP 200. Returns None if all fail.
     """
     candidates = [
-        # Current v2 API (seen in DevTools as of 2024–2025)
         f"{ARCHIDEKT_API}/decks/?folder={folder_id}&pageSize=1",
-        # Older flat listing
         f"{ARCHIDEKT_API}/decks/?folders={folder_id}&pageSize=1",
-        # Nested folder resource
         f"{ARCHIDEKT_API}/decks/folders/{folder_id}/",
-        # Some installs use /v2/
         f"https://archidekt.com/api/v2/decks/?folder={folder_id}&pageSize=1",
     ]
     for url in candidates:
         try:
             r = sess.get(url, timeout=10)
             if r.status_code == 200:
-                print(f"  ✓  working endpoint: {url.split('?')[0]}")
-                return url.split("?")[0]  # return base without probe params
+                print(f"  ✓  API endpoint: {url.split('?')[0]}")
+                return url.split("?")[0]
         except Exception:
             pass
     return None
 
 
 def get_folder_decks(folder_id: int, sess: requests.Session) -> list[dict]:
-    """Return all deck stubs (id + name) from an Archidekt folder."""
+    """
+    Return all deck stubs (id + name) from an Archidekt folder.
+    Tries the JSON API first; falls back to HTML scraping for public folders.
+    """
     base = _probe_folder_endpoint(folder_id, sess)
-    if base is None:
+
+    if base is not None:
+        decks = []
+        page = 1
+        while True:
+            params: dict = {"pageSize": 50, "page": page}
+            if "folder" not in base:
+                params["folder"] = folder_id
+            try:
+                resp = sess.get(base, params=params, timeout=15)
+                resp.raise_for_status()
+            except requests.HTTPError as e:
+                code = e.response.status_code
+                if code == 403:
+                    print("  403 — folder may be private. Set ARCHIDEKT_TOKEN and retry.")
+                else:
+                    print(f"  HTTP {code} on page {page}: {e}")
+                return decks
+            data = resp.json()
+            if isinstance(data, list):
+                results, has_next = data, False
+            else:
+                results, has_next = data.get("results", []), bool(data.get("next"))
+            decks.extend(results)
+            print(f"    page {page}: {len(results)} decks")
+            if not has_next:
+                break
+            page += 1
+            time.sleep(0.4)
+        return decks
+
+    # API failed — fall back to scraping the folder HTML page
+    print(f"  API endpoints all failed. Falling back to HTML scrape of folder page …")
+    stubs = scrape_folder_page(folder_id, sess)
+    if stubs:
+        print(f"  Found {len(stubs)} deck link(s) in page HTML.")
+    else:
         print(
-            f"\n  Could not find a working API endpoint for folder {folder_id}.\n"
-            f"\n  To get your deck IDs manually:\n"
-            f"  1. Open https://archidekt.com/folders/{folder_id} in your browser\n"
-            f"  2. Open DevTools → Network tab → refresh the page\n"
-            f"  3. Look for a request to archidekt.com/api/ that returns a list of decks\n"
-            f"  4. Copy the deck IDs and run:\n"
-            f"       python scripts/import_archidekt.py --decks ID1 ID2 ID3 ...\n"
-            f"\n  Or paste full Archidekt deck URLs:\n"
-            f"       python scripts/import_archidekt.py --decks "
+            f"\n  Could not find decks in folder {folder_id} via API or HTML.\n"
+            f"  If the folder is private, log into Archidekt in your browser,\n"
+            f"  open DevTools → Network → any /api/ request → copy the\n"
+            f"  'Authorization: Bearer ...' header value, then:\n"
+            f"\n      export ARCHIDEKT_TOKEN='Bearer xxxxx'\n"
+            f"      python scripts/import_archidekt.py\n"
+            f"\n  Or pass deck URLs/IDs directly:\n"
+            f"      python scripts/import_archidekt.py --decks "
             f"https://archidekt.com/decks/123456\n"
         )
-        return []
-
-    decks = []
-    page = 1
-    while True:
-        params: dict = {"pageSize": 50, "page": page}
-        # Some endpoints embed folder in path, others as a query param
-        if "folder" not in base:
-            params["folder"] = folder_id
-
-        try:
-            resp = sess.get(base, params=params, timeout=15)
-            resp.raise_for_status()
-        except requests.HTTPError as e:
-            code = e.response.status_code
-            if code == 403:
-                print(f"  403 — folder may be private. Set ARCHIDEKT_TOKEN and retry.")
-            else:
-                print(f"  HTTP {code} fetching page {page}: {e}")
-            return decks
-
-        data = resp.json()
-        # Handle both {"results": [...]} and bare list responses
-        if isinstance(data, list):
-            results = data
-            has_next = False
-        else:
-            results = data.get("results", [])
-            has_next = bool(data.get("next"))
-
-        decks.extend(results)
-        print(f"    page {page}: {len(results)} decks")
-
-        if not has_next:
-            break
+    return stubs
         page += 1
         time.sleep(0.4)
 
